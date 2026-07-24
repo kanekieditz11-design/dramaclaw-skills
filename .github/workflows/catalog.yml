@@ -1,0 +1,65 @@
+name: Catalog
+
+permissions:
+  contents: write
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/catalog.yml"
+      - "scripts/**"
+      - "skills/**"
+      - "tests/**"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/catalog.yml"
+      - "scripts/**"
+      - "skills/**"
+      - "tests/**"
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run catalog tests
+        run: python -m unittest discover -s tests
+
+      - name: Validate Skill Bundles
+        run: python scripts/build_catalog.py validate --root . --allow-empty
+
+      - name: Build catalog
+        run: >
+          python scripts/build_catalog.py build
+          --root .
+          --output catalog.json
+          --raw-base-url https://raw.githubusercontent.com/dramaclaw/dramaclaw-skills/${{ github.sha }}
+          --allow-empty
+
+      - name: Commit catalog on main
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          if git diff --quiet -- catalog.json; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add catalog.json
+          git commit -m "chore: update catalog"
+          git push
+
+      - name: Upload catalog
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalog
+          path: catalog.json
